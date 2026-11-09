@@ -32,7 +32,7 @@ export type {
   WorkbenchActionResult,
 } from './v020-types';
 
-export type Provider = 'mock' | 'colab';
+export type Provider = 'mock' | 'colab' | 'kaggle';
 export type ParamType = 'string' | 'text' | 'integer' | 'number' | 'boolean' | 'image' | 'video' | 'file' | string;
 
 export interface ApiEnvelope<T> { data?: T; error?: { code?: string; message?: string; detail?: unknown } | string | null; request_id?: string; }
@@ -207,6 +207,7 @@ export const deactivateGpuWorkflow = (id: string) => apiFetch<GpuWorkflow>(`/api
 export type ActivationStep = { key: string; label: string; done: boolean; next?: boolean; running?: boolean; failed?: boolean };
 export type ActivationInput = { key: string; label: string; description?: string; type: string; required: boolean };
 export type WorkflowActivation = {
+  compute_provider?: 'kaggle' | 'colab';
   workflow: { id: string; workflow_key: string; version: string; state: string; active: boolean };
   model: null | { model_id: string; review_approved: boolean; license_accepted: boolean; enabled: boolean; license?: string; source?: string };
   steps: ActivationStep[];

@@ -1,4 +1,4 @@
-export type V020Provider = 'mock' | 'colab';
+export type V020Provider = 'mock' | 'colab' | 'kaggle';
 
 export type GpuAllocation = 'auto' | 'existing';
 export type GpuLifecycle = 'save' | 'batch' | 'smart' | 'retain';

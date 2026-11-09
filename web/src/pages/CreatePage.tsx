@@ -342,21 +342,22 @@ export function CreatePanel({
           onChange={setRuntime}
           options={[
             { value: 'mock', label: '离线模拟', sub: '不扣 CU', icon: <Monitor size={17} strokeWidth={1.6} aria-hidden /> },
+            { value: 'kaggle', label: 'Kaggle GPU', sub: settings?.real_enabled ? '私有 Dataset 模型' : '未启用', disabled: !settings?.real_enabled, icon: <Cloud size={17} strokeWidth={1.6} aria-hidden /> },
             { value: 'colab', label: 'Colab GPU', sub: settings?.real_enabled ? '真实出图' : '未启用', disabled: !settings?.real_enabled, icon: <Cloud size={17} strokeWidth={1.6} aria-hidden /> },
           ]}
         />
-        <RuntimeSelection value={runtimeChoice} accounts={accounts} instances={instances} provider={runtime}
-          onChange={onRuntimeChoiceChange} />
+        {runtime !== 'kaggle' && <RuntimeSelection value={runtimeChoice} accounts={accounts} instances={instances} provider={runtime}
+          onChange={onRuntimeChoiceChange} />}
         {batchMode === 'retain' && <p className="muted small">保留机器会继续产生 CU；本站只承诺保留到设定截止，Google 仍可能提前回收。</p>}
-        {runtime === 'colab' && (
+        {runtime !== 'mock' && (
           <div className="field">
             <label htmlFor="max-runtime">单个任务最长运行（分钟）</label>
             <input id="max-runtime" type="number" inputMode="numeric" min={5} max={maxMinutesCap} value={maxRuntime} onChange={(e) => setMaxRuntime(Number(e.target.value))} />
-            <span className={styles.hint}>超时会被强制关机，已花的 CU 不退。</span>
+            <span className={styles.hint}>Kaggle 由 Notebook 时限结束运行；配额及硬件可用性以平台为准。</span>
           </div>
         )}
         <p className="muted small">
-          {runtime === 'mock' ? RUNTIME_HELP.mock : `${RUNTIME_HELP.colab}今日限额 ${shown(settings?.budget?.daily_units)} CU。`}
+          {runtime === 'kaggle' ? '模型从私有 Kaggle Dataset 挂载读取；每个任务独立运行，使用账号免费 GPU 配额。取消后需等待远端结束。' : runtime === 'mock' ? RUNTIME_HELP.mock : `${RUNTIME_HELP.colab}今日限额 ${shown(settings?.budget?.daily_units)} CU。`}
         </p>
         <button className="button big" disabled={!workflowId || loading === 'submit'} type="button" onClick={onSubmit}>
           <Sparkles size={18} strokeWidth={1.8} aria-hidden />{loading === 'submit' ? '提交中…' : '立即生成'}

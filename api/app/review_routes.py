@@ -23,6 +23,8 @@ from .gpu.colab import GoogleColabProvider
 from .gpu.compute import GpuConfig
 from .gpu.google import GoogleService
 from .gpu.inputs import resolve_input_images
+from .gpu.kaggle import KaggleProvider
+from .gpu.kaggle import enabled as kaggle_enabled
 from .gpu.manifest import bind_parameters, digest, resolve_parameters, validate_manifest
 from .gpu.prep import create_prep_job, prep_idempotency_key
 from .gpu.rates import estimate as estimate_units
@@ -228,7 +230,7 @@ def _job_request(workflow_id: str, row: dict, body: Mapping) -> dict:
         "asset_ids": copy.deepcopy(body.get("asset_ids", [])),
         "spec": copy.deepcopy(body.get("spec")),
         "execution_policy": {
-            "provider": "colab",
+            "provider": "kaggle" if kaggle_enabled() else "colab",
             "account_id": body.get("account_id"),
             "shutdown_after_job": True,
             "max_runtime_minutes": 5,
@@ -504,6 +506,8 @@ def _reusable_smoke_job(repo: Repository, owner: str, workflow_id: str, row: Map
     for job in repo.list("jobs", owner):
         if job.get("state") not in {"queued", "running", "completed"}:
             continue
+        if job.get('provider') != ('kaggle' if kaggle_enabled() else 'colab'):
+            continue
         if job.get("smoke_accepted") is True:
             continue
         if _job_matches_smoke(job, workflow_id, row, model, signature):
@@ -628,10 +632,17 @@ def real_smoke(
         raise APIError("GPU_SPEC_REQUIRED", "必须提供来自当前账户的spec.key")
     key = _idempotency_key(request)
     account_id = body.get("account_id")
+    if kaggle_enabled():
+        import os
+        account_id = os.getenv('KAGGLE_DRIVE_ACCOUNT_ID', '').strip()
     if not isinstance(account_id, str) or not account_id.strip():
         raise APIError("ACCOUNT_REQUIRED", "真实冒烟必须明确选择Google账号", 422)
     repo = Repository(st)
-    _require_account(repo, user["id"], account_id)
+    if kaggle_enabled():
+        from .gpu.kaggle import validate_drive
+        validate_drive(repo, user['id'], account_id)
+    else:
+        _require_account(repo, user["id"], account_id)
     row = own(repo, "workflows", workflow_id, user)
     if row.get("state") not in {"draft", "validated"}:
         raise APIError("WORKFLOW_REVIEW_INVALID", "真实冒烟只能用于未发布的draft或validated工作流")
@@ -669,7 +680,7 @@ def real_smoke(
         "loras": copy.deepcopy(body.get("loras") or []),
         "spec": copy.deepcopy(body["spec"]),
         "execution_policy": {
-            "provider": "colab",
+            "provider": "kaggle" if kaggle_enabled() else "colab",
             "account_id": account_id,
             "shutdown_after_job": True,
             "max_runtime_minutes": runtime,
@@ -695,19 +706,21 @@ def real_smoke(
 
     if not cfg.real_enabled:
         raise APIError("REAL_GPU_DISABLED", "GPU_REAL_ENABLED尚未启用")
-    if cfg.unit_rate is None or cfg.unit_rate <= 0:
+    if not kaggle_enabled() and (cfg.unit_rate is None or cfg.unit_rate <= 0):
         raise APIError("RATE_UNKNOWN", "必须先配置真实GPU每分钟估算费率")
     google = GoogleService(repo, user["id"], account_id=account_id)
-    if not google.status().get("colab", {}).get("connected"):
+    if not kaggle_enabled() and not google.status().get("colab", {}).get("connected"):
         raise APIError("GOOGLE_NOT_CONNECTED", "请先完成个人Colab OAuth授权")
     chosen_spec = _eligible_spec(
-        GoogleColabProvider(repo, user["id"], account_id=account_id).list_specs(), requested_key
+        (KaggleProvider(repo, user["id"]) if kaggle_enabled() else GoogleColabProvider(repo, user["id"], account_id=account_id)).list_specs(), requested_key
     )
     # 大模型要先下载权重；声明值仍受服务端全局上限约束。冒烟上限与步骤标签、任务记录使用同一个数。
-    estimated = runtime * cfg.unit_rate  # budget worst case
+    estimated = 0.0 if kaggle_enabled() else runtime * cfg.unit_rate  # budget worst case
     picked = mode_param(row["manifest"])
     shown, rate = estimate_units(repo, user["id"], row["workflow_key"], row["manifest"], chosen_spec.get("key"), runtime,
                                  mode=params.get(picked[0]) if picked else None)
+    if kaggle_enabled():
+        shown, rate = 0.0, 0.0
     # Check once before the lock for a fast response and again inside the lock
     # so concurrent admissions cannot reserve the same budget twice.
     _budget_check(st, user["id"], cfg, estimated)
@@ -727,6 +740,9 @@ def real_smoke(
         "target_workflow_id": workflow_id,
         "target_model_id": row["model_id"],
     }
+    if kaggle_enabled():
+        from .gpu.kaggle import configuration
+        snapshot['kaggle_datasets'] = configuration()[1]
     loras = body.get("loras") or []
     if loras:
         # Smoke runs may only use the curated (pinned, SFW) list, never owner-uploaded files.
@@ -759,7 +775,7 @@ def real_smoke(
                 job["id"],
                 {
                     "project_id": project["id"],
-                    "provider": "colab",
+                    "provider": "kaggle" if kaggle_enabled() else "colab",
                     "account_id": account_id,
                     "requested_account_id": account_id,
                     "execution_policy": raw["execution_policy"],
@@ -795,7 +811,9 @@ def real_smoke(
 def prepare_workflow(
     workflow_id: str, body: dict, request: Request, user=Depends(current_user), st=Depends(get_store)
 ):  # noqa: B008
-    """Queue a CPU-only job that builds the env archive and fills the weight cache in Drive."""
+    """Queue Colab CPU preparation only for the Colab provider."""
+    if kaggle_enabled():
+        raise APIError('DATASET_REQUIRED', 'Kaggle 模型请一次性上传私有 Dataset，不使用 Drive 模型预热')
     _admin(user)
     _confirmed(body)
     repo = Repository(st)
@@ -899,7 +917,7 @@ def accept_smoke(
     snapshot = _job_snapshot(job)
     if (
         job.get("state") != "completed"
-        or job.get("provider") != "colab"
+        or job.get("provider") not in {"colab", "kaggle"}
         or snapshot.get("workflow_smoke") is not True
     ):
         raise APIError("SMOKE_NOT_COMPLETE", "只能验收已完成的服务器真实工作流冒烟任务")
@@ -980,9 +998,13 @@ def workflow_activation(
         if not isinstance(body, dict) or not isinstance(body.get("account_id"), str) or not body["account_id"]:
             raise APIError("ACCOUNT_REQUIRED", "工作流启用必须明确选择Google账号", 422)
         account_id = body["account_id"]
-        _require_account(repo, user["id"], account_id)
+        if kaggle_enabled():
+            from .gpu.kaggle import validate_drive
+            validate_drive(repo, user['id'], account_id)
+        else:
+            _require_account(repo, user["id"], account_id)
         google = GoogleService(repo, user["id"], account_id=account_id)
-        if not google.status().get("colab", {}).get("connected"):
+        if not kaggle_enabled() and not google.status().get("colab", {}).get("connected"):
             raise APIError("GOOGLE_NOT_CONNECTED", "所选Google账号尚未完成Colab授权", 409)
     row = own(repo, "workflows", workflow_id, user)
     model = next((item for item in repo.list("models", user["id"]) if item.get("model_id") == row.get("model_id")), None)
@@ -1054,7 +1076,7 @@ def workflow_activation(
         blockers.append("模型缺少来源或许可字段，无法完成审查")
     if not cfg.real_enabled:
         blockers.append("服务端未开启真实 GPU（GPU_REAL_ENABLED）")
-    elif cfg.unit_rate is None or cfg.unit_rate <= 0:
+    elif not kaggle_enabled() and (cfg.unit_rate is None or cfg.unit_rate <= 0):
         blockers.append("服务端未配置 GPU 计价费率")
     if runtime_error:
         blockers.append(runtime_error)
@@ -1114,6 +1136,7 @@ def workflow_activation(
             "smoke_job_completed": smoke_completed,
             "smoke_kind": row.get("smoke_test_kind"),
             "real_enabled": bool(cfg.real_enabled),
+            "compute_provider": "kaggle" if kaggle_enabled() else "colab",
             "max_runtime_minutes": runtime_cap,
             "blockers": blockers,
             "done": published and bool(row.get("active")) and smoke_done,

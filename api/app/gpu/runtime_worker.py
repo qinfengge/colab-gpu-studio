@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import base64
 import contextlib
-import fcntl
 import hashlib
 import importlib.metadata
 import io
@@ -127,6 +126,8 @@ def _comfy_service_dir(instance_id: str) -> Path:
 @contextlib.contextmanager
 def _file_lock(path: Path):
     """Serialize worker-local service management without trusting a PID lock."""
+    import fcntl  # Linux-only remote service lock; host imports also work on Windows.
+
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     with path.open("a+") as stream:
         fcntl.flock(stream.fileno(), fcntl.LOCK_EX)

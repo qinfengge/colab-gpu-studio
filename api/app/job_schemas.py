@@ -29,7 +29,7 @@ def _legacy_lifecycle(policy: "Policy") -> str:
 class Policy(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    provider: Literal["mock", "colab"] = "mock"
+    provider: Literal["mock", "colab", "kaggle"] = "mock"
     # Kept for wire compatibility with v0.1 clients.
     shutdown_after_job: bool = True
     max_runtime_minutes: int = Field(default=60, ge=1, le=1440)

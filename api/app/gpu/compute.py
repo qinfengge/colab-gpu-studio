@@ -345,6 +345,11 @@ def default_provider_factory(
     name = job.get("provider") or (job.get("execution_policy") or {}).get("provider", "mock")
     if name == "mock":
         return MockColabProvider()
+    if name == "kaggle":
+        if not config.real_enabled or os.getenv("STUDIO_OFFLINE_TEST") == "1":
+            return DisabledProvider("真实 GPU 未启用")
+        from .kaggle import KaggleProvider
+        return KaggleProvider(store, owner_id or job.get("owner_id"))
     if name == "colab" and (os.getenv("STUDIO_OFFLINE_TEST") == "1" or not config.real_enabled):
         return DisabledProvider("real GPU provider is disabled or unconfigured")
     if name == "colab":
@@ -408,6 +413,9 @@ def default_executor_factory(
     name = job.get("provider") or (job.get("execution_policy") or {}).get("provider", "mock")
     if name == "mock":
         return MockGPUExecutor()
+    if name == "kaggle" and config.real_enabled and os.getenv("STUDIO_OFFLINE_TEST") != "1":
+        from .kaggle import KaggleExecutor
+        return KaggleExecutor(store, owner_id or job.get("owner_id"))
     if name == "colab" and config.real_enabled and os.getenv("STUDIO_OFFLINE_TEST") != "1":
         # Built-in diagnostics/prep retain the legacy MCP path forever.  They
         # intentionally have no model revision and therefore cannot satisfy

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { transform } from 'esbuild';
-const {code}=await transform(readFileSync('src/components/workflowGraphPreview.ts','utf8'),{loader:'ts',format:'esm'});
+const {code}=await transform(readFileSync('src/components/graphPreviewData.ts','utf8'),{loader:'ts',format:'esm'});
 const {normalisePreviewGraph}=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));
 test('API graph preserves linked nodes without executing content',()=>{
  const data={'1':{class_type:'Loader',inputs:{name:'<script>unsafe</script>'}},'2':{class_type:'Sampler',inputs:{model:['1',0]}}};

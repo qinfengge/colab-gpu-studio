@@ -22,8 +22,8 @@ def repo_registry(st, user):
 
 def _job_estimate(repo, owner, workflow, policy, cfg, params) -> dict:
     """Shown estimate is realistic; budget_units keeps reserving the max-runtime worst case."""
-    if policy["provider"] == "mock":
-        return {"estimated_units": 0.0, "unit_rate": cfg.unit_rate}
+    if policy["provider"] in {"mock", "kaggle"}:
+        return {"estimated_units": 0.0, "budget_units": 0.0, "unit_rate": 0.0}
     cap = min(policy["max_runtime_minutes"], cfg.max_runtime_minutes)
     manifest = workflow["manifest"]
     picked = mode_param(manifest)
@@ -135,9 +135,9 @@ def admit_job(st, user, body, key, *, validate_only=False):
     project = own(st, "projects", body["project_id"], user)
     cfg = GpuConfig.from_env()
     policy = _validate_allocation(repo, user, normalize_policy(body["execution_policy"]))
-    if policy["provider"] not in {"mock", "colab"}:
+    if policy["provider"] not in {"mock", "colab", "kaggle"}:
         raise APIError("PROVIDER_INVALID", "仅允许已配置的 mock 或 colab Provider")
-    if policy["provider"] == "colab" and not cfg.real_enabled:
+    if policy["provider"] in {"colab", "kaggle"} and not cfg.real_enabled:
         raise APIError("REAL_GPU_DISABLED", "真实 GPU 默认关闭：请先配置 OAuth、费率预算并完成模型审查")
     if policy["provider"] == "colab" and policy["lifecycle"] in {"smart", "retain"}:
         import os
@@ -180,6 +180,27 @@ def admit_job(st, user, body, key, *, validate_only=False):
         "model_revision": model.get("revision"),
         "dependency_lock": workflow["manifest"].get("dependencies", {}),
     }
+    if policy["provider"] == "kaggle":
+        from .gpu.kaggle import configuration
+        _, datasets = configuration()
+        snapshot["kaggle_datasets"] = datasets
+        if policy['lifecycle'] != 'save' or policy.get('instance_id'):
+            raise APIError("POLICY_INVALID", "Kaggle 每个任务独立运行，仅支持完成即结束")
+        if not workflow.get('review_approved') or workflow.get('smoke_test_kind') != 'real':
+            raise APIError("REVIEW_REQUIRED", "工作流必须先完成 Kaggle 真实冒烟和审查")
+        smoke = repo.get('jobs', workflow.get('smoke_job_id'), user['id'])
+        if not smoke or smoke.get('provider') != 'kaggle':
+            raise APIError("REVIEW_REQUIRED", "Colab 冒烟不能代替 Kaggle 硬件验证")
+        snapshot['manifest'] = {**snapshot['manifest'], 'state': 'published', 'reviewed': True}
+    if policy['provider'] == 'kaggle':
+        import os
+        drive_id = os.getenv('KAGGLE_DRIVE_ACCOUNT_ID', '').strip()
+        if not drive_id:
+            raise APIError('DRIVE_ACCOUNT_REQUIRED', '请配置 KAGGLE_DRIVE_ACCOUNT_ID（素材和结果存储账号）')
+        _resource(repo, 'accounts', drive_id, user, 'ACCOUNT_NOT_FOUND', 'Drive 账号不存在')
+        if not _google_status(repo, user['id'], drive_id).get('drive', {}).get('connected'):
+            raise APIError('GOOGLE_NOT_CONNECTED', '请先完成 Drive 授权')
+        policy['account_id'] = drive_id
     baseline = None
     if policy["provider"] == "colab":
         if not workflow.get("review_approved") or workflow.get("smoke_test_kind") != "real":

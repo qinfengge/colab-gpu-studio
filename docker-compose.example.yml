@@ -24,6 +24,7 @@ services:
       retries: 10
   worker:
     <<: *studio
+    mem_limit: 1024m
     command: [python, -m, app.worker, worker]
     depends_on:
       api: {condition: service_healthy}

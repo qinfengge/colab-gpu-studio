@@ -518,7 +518,7 @@ export default function App() {
     setLoading('submit');
     setError('');
     try {
-      const decision = resolveInstanceSubmission(runtimeChoice, instances);
+      const decision = resolveInstanceSubmission(runtime === 'kaggle' ? {accountId: null, instanceId: null} : runtimeChoice, instances);
       if (!decision.ok) {
         setRuntimeChoice({ ...runtimeChoice, accountId: decision.accountId, instanceId: decision.instanceId });
         setError(decision.message);
@@ -540,7 +540,7 @@ export default function App() {
           allocation: decision.allocation,
           account_id: decision.accountId,
           instance_id: decision.instanceId,
-          lifecycle: runtimeChoice.lifecycle,
+          lifecycle: runtime === 'kaggle' ? 'save' : runtimeChoice.lifecycle,
           retain_idle_minutes: runtimeChoice.retainIdleMinutes,
         },
       };
@@ -548,7 +548,7 @@ export default function App() {
         // 批次沿用用户选定的账号、实例与生命周期，不再静默改成 batch。
         await createGpuBatch(Array.from({length:batchCount},(_,index)=>({...body,
           params:{...body.params,...(typeof body.params.seed === 'number' && body.params.seed >= 0 ? {seed:body.params.seed+index} : {})}})),
-          runtimeChoice.lifecycle, runtimeChoice.retainIdleMinutes * 60, idempotencyKey.current);
+          runtime === 'kaggle' ? 'save' : runtimeChoice.lifecycle, runtimeChoice.retainIdleMinutes * 60, idempotencyKey.current);
       } else {
         await createGpuJob(body, idempotencyKey.current);
       }
@@ -559,7 +559,7 @@ export default function App() {
     } catch (cause) {
       const code = cause instanceof ApiError ? cause.code : '';
       if (code === 'INSTANCE_UNAVAILABLE' || code === 'INSTANCE_NOT_FOUND') {
-        const decision = resolveInstanceSubmission(runtimeChoice, instances);
+        const decision = resolveInstanceSubmission(runtime === 'kaggle' ? {accountId: null, instanceId: null} : runtimeChoice, instances);
         setRuntimeChoice({ ...runtimeChoice, accountId: decision.accountId || runtimeChoice.accountId, instanceId: null });
         setError('所选 GPU 机器已释放或不能复用。这次没有提交任务，也没有换账号。请再点一次确认，改为自动分配，或另选一台可用机器。');
       } else if (code === 'NETWORK_TIMEOUT') {
@@ -662,6 +662,11 @@ export default function App() {
       ]);
       setAccounts(uniqueBy(currentAccounts, (account) => account.account_id));
       setSettings(currentSettings);
+      if (currentSettings?.compute_provider === 'kaggle') {
+        setSpecs(await getGpuComputeSpecs('kaggle'));
+        setSpecsNote('Kaggle 请求规格；是否可分配以平台配额和容量为准。');
+        return;
+      }
       const checkRequest = resolveGpuCheckRequest(currentSettings, currentAccounts, runtimeChoice.accountId || null);
       if (checkRequest.provider === 'mock') {
         // 真实 GPU 没启用、离线或没有可用账号：明确改查模拟，不假装查了真实机器
@@ -675,7 +680,7 @@ export default function App() {
               : '账号池没有已连接且启用的 Google 账号，下面是「模拟」GPU。请先到「设置」完成授权。');
         return;
       }
-      setSpecs(await getGpuComputeSpecs('colab', checkRequest.accountId));
+      setSpecs(await getGpuComputeSpecs(currentSettings?.compute_provider === 'kaggle' ? 'kaggle' : 'colab', checkRequest.accountId));
       setSpecsNote(runtimeChoice.accountId
         ? '已查询所选 Google 账号的 Colab：有申请资格不等于现在一定有空闲 GPU。'
         : '已按账号池选择 Google 账号并查询 Colab：有申请资格不等于现在一定有空闲 GPU。');
@@ -965,7 +970,7 @@ export default function App() {
             <h2>确认开始生成</h2>
             <dl className={styles.kv}>
               <dt>工作流</dt><dd>{activeWorkflow.workflow_key} · v{activeWorkflow.workflow_version}</dd>
-              <dt>运行方式</dt><dd>{runtime === 'colab' ? 'Colab GPU（会扣 CU）' : '离线模拟（不扣 CU）'}</dd>
+              <dt>运行方式</dt><dd>{runtime === 'kaggle' ? 'Kaggle GPU（使用免费配额）' : runtime === 'colab' ? 'Colab GPU（会扣 CU）' : '离线模拟（不扣 CU）'}</dd>
               <dt>机器</dt><dd>{resolveInstanceSubmission(runtimeChoice, instances).machineLabel}</dd>
               <dt>数量</dt><dd>{batchCount}</dd>
               {runtime === 'colab' && <><dt>最长运行</dt><dd>{maxRuntime} 分钟</dd></>}

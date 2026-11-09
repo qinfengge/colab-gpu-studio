@@ -6,6 +6,8 @@ from .common import APIError, admin, current_user, get_store, ok
 from .gpu.colab import GoogleColabProvider
 from .gpu.compute import GpuConfig
 from .gpu.google import GoogleService
+from .gpu.kaggle import KaggleProvider
+from .gpu.kaggle import enabled as kaggle_enabled
 from .gpu.manifest import digest
 from .gpu.repository import Repository
 
@@ -47,6 +49,8 @@ def _require_account(repo, owner_id: str, account_id: str | None, *, require_all
 
 def _provider(repo, owner_id: str, account_id: str | None):
     """Construct providers with account binding while tolerating old test doubles."""
+    if kaggle_enabled():
+        return KaggleProvider(repo, owner_id)
     try:
         return GoogleColabProvider(repo, owner_id, account_id=account_id)
     except TypeError as exc:
@@ -63,7 +67,7 @@ def cuda_smoke(body: dict, request: Request, user=Depends(current_user), st=Depe
         raise APIError("CONFIRMATION_REQUIRED", "此测试会真实消费点数，必须明确确认", 403)
     if not cfg.real_enabled:
         raise APIError("REAL_GPU_DISABLED", "真实 GPU 开关尚未启用")
-    if cfg.unit_rate is None or cfg.unit_rate <= 0:
+    if not kaggle_enabled() and (cfg.unit_rate is None or cfg.unit_rate <= 0):
         raise APIError("RATE_UNKNOWN", "必须先填写每分钟估算费率和预算")
     account_id = body.get("account_id")
     if not isinstance(account_id, str) or not account_id.strip():
@@ -79,7 +83,7 @@ def cuda_smoke(body: dict, request: Request, user=Depends(current_user), st=Depe
         "requested_spec": body.get("spec"),
         "max_runtime_minutes": min(5, cfg.max_runtime_minutes),
         "execution_policy": {
-            "provider": "colab",
+            "provider": "kaggle" if kaggle_enabled() else "colab",
             "account_id": account_id,
             "max_runtime_minutes": min(5, cfg.max_runtime_minutes),
             "shutdown_after_job": True,
@@ -90,7 +94,7 @@ def cuda_smoke(body: dict, request: Request, user=Depends(current_user), st=Depe
             raise APIError("IDEMPOTENCY_CONFLICT", "幂等键已用于其他参数", 409)
         return ok({"id": previous["id"], "job_id": previous["id"], "state": previous["state"]}, request, 202)
     google = GoogleService(repo, user["id"], account_id=account_id)
-    if not google.status()["colab"]["connected"]:
+    if not kaggle_enabled() and not google.status()["colab"]["connected"]:
         raise APIError("GOOGLE_NOT_CONNECTED", "请先完成个人 Colab OAuth 授权")
     specs = _provider(repo, user["id"], account_id).list_specs()
     eligible = [
@@ -133,7 +137,7 @@ def cuda_smoke(body: dict, request: Request, user=Depends(current_user), st=Depe
                 job["id"],
                 {
                     "project_id": project_id,
-                    "provider": "colab",
+                    "provider": "kaggle" if kaggle_enabled() else "colab",
                     "account_id": account_id,
                     "requested_account_id": account_id,
                     "execution_policy": raw["execution_policy"],
@@ -143,7 +147,7 @@ def cuda_smoke(body: dict, request: Request, user=Depends(current_user), st=Depe
                     "snapshot": snapshot,
                     "requested_spec": eligible[0],
                     "max_runtime_minutes": raw["max_runtime_minutes"],
-                    "estimated_units": raw["max_runtime_minutes"] * cfg.unit_rate,
+                    "estimated_units": (0.0 if kaggle_enabled() else raw["max_runtime_minutes"] * cfg.unit_rate),
                     "unit_rate": cfg.unit_rate,
                 },
                 user["id"],

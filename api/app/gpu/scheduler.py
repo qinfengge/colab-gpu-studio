@@ -268,7 +268,7 @@ class Scheduler:
         return {**job, "execution_policy": {**policy, "lifecycle": lifecycle}}
 
     def _is_v020_job(self, job: dict) -> bool:
-        return self.instance_service is not None and not job.get("legacy_scheduler_only")
+        return self._provider_name(job) != "kaggle" and self.instance_service is not None and not job.get("legacy_scheduler_only")
 
     def _allocate_instance(self, job: dict) -> dict:
         if not self._is_v020_job(job) or job.get("instance_id"):
@@ -928,6 +928,13 @@ class Scheduler:
             raise ComputeError(self._safe_error(exc)) from exc
         if not isinstance(specs, list):
             raise ComputeError("GPU runtime规格响应无效")
+        if self._provider_name(job) == 'kaggle':
+            chosen = job.get('requested_spec') or {}
+            key = chosen.get('key') or {'variant': 'GPU', 'accelerator': 'T4', 'shape': 'KAGGLE'}
+            candidates = [s for s in specs if s.get('key') == key and s.get('eligible') is True]
+            if not candidates:
+                raise ComputeError('工作流必须在 Kaggle 规格上完成冒烟验证')
+            return candidates[0]
         requested = job.get("requested_spec") or (job.get("execution_policy") or {}).get("requested_spec")
         requested_key = requested if isinstance(requested, str) else self._spec_key(requested or {})
         manifest_runtime = self._manifest_runtime(job)
@@ -1239,6 +1246,8 @@ class Scheduler:
             job = self._set_state(job, 'running', 'GPU connection recovered', poll_retry_count=0, poll_retry_at=0)
         if result.get('execution_id') not in {None,job.get('execution_id')}:
             return self._begin_failure(job,'gpu_execution_id_mismatch','poll execution identity mismatch')
+        if self._provider_name(job) == 'kaggle' and isinstance(result.get('gpu_diagnostics'), dict):
+            job = self._update('jobs', job['id'], {'gpu_diagnostics': result['gpu_diagnostics']}, job['owner_id'])
         state = result.get("state")
         timings = result.get("timings") if isinstance(result.get("timings"), dict) else None
         if state == "completed":
@@ -1480,7 +1489,7 @@ class Scheduler:
         Attribution is only exclusive when no other lease on the same account was
         active, otherwise the delta may include a sibling job and is flagged.
         """
-        if self._provider_name(job) == "mock" or not job.get("account_id"):
+        if self._provider_name(job) != "colab" or not job.get("account_id"):
             return {}
         owner_id = job.get("owner_id")
         if not owner_id:
@@ -1517,7 +1526,7 @@ class Scheduler:
         started = float(job.get("started_epoch") or lease.get("created_epoch") or stopped_at)
         elapsed_minutes = max(0.0, stopped_at - started) / 60.0
         is_mock = self._provider_name(job) == "mock"
-        rate = float(job.get("unit_rate") or self.config.unit_rate or 0)
+        rate = 0.0 if self._provider_name(job) == "kaggle" else float(job.get("unit_rate") or self.config.unit_rate or 0)
         estimate = 0.0 if is_mock else elapsed_minutes * rate
         spend: dict = {}
         if not is_mock:
@@ -1568,7 +1577,7 @@ class Scheduler:
     def _cleanup(self, job: dict) -> dict:
         lease = self._lease(job)
         job = self._trusted_plugin_cleanup(job, lease)
-        if lease and job.get("batch_id") and job.get("cleanup_final_state") == "completed":
+        if self._provider_name(job) != "kaggle" and lease and job.get("batch_id") and job.get("cleanup_final_state") == "completed":
             waiting = [j for j in self._list("jobs", job["owner_id"])
                        if j.get("batch_id") == job["batch_id"] and j["state"] not in TERMINAL_STATES
                        and j["id"] != job["id"] and not j.get("cancel_requested")]

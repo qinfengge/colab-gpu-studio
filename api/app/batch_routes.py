@@ -62,9 +62,9 @@ def build_batch_router(JobInput, admit_job, public_job):
             if len(retain_minutes) > 1:
                 raise APIError("POLICY_INVALID", "同一批次必须使用一致的保留时长")
         providers = {job.execution_policy.provider for job in body.jobs}
-        if not providers <= {'mock', 'colab'}:
+        if not providers <= {'mock', 'colab', 'kaggle'}:
             raise APIError("PROVIDER_INVALID", "不支持该 Provider")
-        if 'colab' in providers:
+        if providers & {'colab', 'kaggle'}:
             from .gpu.compute import GpuConfig
             if os.getenv("STUDIO_OFFLINE_TEST") == "1" or not GpuConfig.from_env().real_enabled:
                 raise APIError("REAL_GPU_DISABLED", "真实 GPU 未启用，不能提交真实批次", 403)

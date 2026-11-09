@@ -1,0 +1,25 @@
+name: Kaggle migration checks
+on:
+  push:
+    branches: [kaggle-migration, main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.9.8'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: uv sync --extra test --python 3.11
+      - run: uv run ruff check api tests/gpu/test_kaggle.py
+      - run: uv run pytest -q
+      - run: npm --prefix web ci
+      - run: npm --prefix web run test:contract
+      - run: npm --prefix web run build

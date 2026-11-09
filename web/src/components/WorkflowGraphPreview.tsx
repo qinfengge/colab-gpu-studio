@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { GpuWorkflow } from '../lib/gpu-api';
-import { normalisePreviewGraph, previewFileName, type JsonRecord, type PreviewGraph } from './workflowGraphPreview';
+import { normalisePreviewGraph, previewFileName, type JsonRecord, type PreviewGraph } from './graphPreviewData';
 import styles from './WorkflowGraphPreview.module.css';
 
 export interface WorkflowGraphPreviewData {

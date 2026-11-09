@@ -504,7 +504,7 @@ class Repository:
                 data.update(batch_id=batch_id, queue_order=index, state="queued",
                             execution_policy={**data.get("execution_policy", {}), **policy},
                             provider=data.get("execution_policy", {}).get("provider", "mock"))
-                if data['provider'] not in {'mock', 'colab'}:
+                if data['provider'] not in {'mock', 'colab', 'kaggle'}:
                     raise ValueError('batch provider is not authorized')
                 data['compatibility_signature'] = digest({
                     'provider':data['provider'],
@@ -905,7 +905,7 @@ class Repository:
                     not instance_identity["account_id"]
                     or instance_identity["account_id"] != lease_identity["account_id"]
                     or instance_identity["instance_id"] not in (None, instance_id)
-                    or lease_data.get("provider") not in {"mock", "colab"}
+                    or lease_data.get("provider") not in {"mock", "colab", "kaggle"}
                     or instance_data.get("provider") not in {None, lease_data.get("provider")}
                     or not lease_data.get("runtime_id")
                     or not lease_data.get("request_id")

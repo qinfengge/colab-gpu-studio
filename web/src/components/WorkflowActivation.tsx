@@ -225,6 +225,14 @@ export function WorkflowActivationPanel({
           }
           return;
         }
+        if (snapshot.compute_provider === 'kaggle') {
+          const eligible = selectEligibleColabGpuSpec(await getGpuComputeSpecs('kaggle'));
+          if (!isCurrent(token)) return;
+          if (!eligible) throw new Error('Kaggle GPU 尚未配置');
+          setAccountId('kaggle');
+          setSpec(eligible);
+          return;
+        }
         const accounts = await getGoogleAccounts();
         if (!isCurrent(token)) return;
         const request = resolveGpuCheckRequest(
@@ -311,7 +319,7 @@ export function WorkflowActivationPanel({
   return (
     <div className={styles.activationPanel}>
       <p className="muted small">
-        这一步会真实分配 GPU 跑一次冒烟（{runtimeText(runtimeLimit)}，按实际用量计费）。通过后自动发布并设为当前版本。发布是单独的一步，不会在冒烟排队时一直空转。
+        这一步会真实分配 GPU 跑一次冒烟（{runtimeText(runtimeLimit)}，Kaggle 使用免费配额，Colab 按实际用量计费）。通过后自动发布并设为当前版本。发布是单独的一步，不会在冒烟排队时一直空转。
       </p>
       <p className="muted small">
         {projectId

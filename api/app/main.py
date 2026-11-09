@@ -708,6 +708,7 @@ def get_settings(request: Request, user=Depends(current_user), st=Depends(get_st
         {
             "offline_mode": os.getenv("STUDIO_OFFLINE_TEST") == "1",
             "provider_default": "mock",
+            "compute_provider": os.getenv("GPU_COMPUTE_PROVIDER", "colab"),
             "real_enabled": cfg.real_enabled,
             "google": GoogleService(Repository(st), user["id"]).status(),
             "budget": usage(st, user["id"]),
@@ -728,6 +729,11 @@ def compute_specs(
 ):
     if provider == "mock":
         return ok(MockColabProvider().list_specs(), request)
+    if provider == "kaggle":
+        from .gpu.kaggle import KaggleProvider
+        if not GpuConfig.from_env().real_enabled or os.getenv("STUDIO_OFFLINE_TEST") == "1":
+            raise APIError("REAL_GPU_DISABLED", "真实 GPU 尚未启用", 409)
+        return ok(KaggleProvider(Repository(st), user['id']).list_specs(), request)
     if provider != "colab":
         raise APIError("PROVIDER_INVALID", "不支持该 Provider")
     if os.getenv("STUDIO_OFFLINE_TEST") == "1":

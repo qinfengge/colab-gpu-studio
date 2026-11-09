@@ -280,7 +280,7 @@ class Registry:
                 raise ValueError("真实workflow必须有当前匹配的真实smoke任务")
             if (
                 smoke_job.get("state") != "completed"
-                or smoke_job.get("provider") != "colab"
+                or smoke_job.get("provider") not in {"colab", "kaggle"}
                 or smoke_job.get("smoke_accepted") is not True
                 or smoke_job.get("acceptance_state") != "accepted"
                 or smoke_job.get("workflow_smoke") is not True
