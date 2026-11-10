@@ -70,13 +70,20 @@ def cuda_smoke(body: dict, request: Request, user=Depends(current_user), st=Depe
     if not kaggle_enabled() and (cfg.unit_rate is None or cfg.unit_rate <= 0):
         raise APIError("RATE_UNKNOWN", "必须先填写每分钟估算费率和预算")
     account_id = body.get("account_id")
+    if kaggle_enabled():
+        import os
+        account_id = os.getenv("KAGGLE_DRIVE_ACCOUNT_ID", "").strip()
     if not isinstance(account_id, str) or not account_id.strip():
         raise APIError("ACCOUNT_REQUIRED", "真实冒烟必须明确选择Google账号", 422)
     key = request.headers.get("Idempotency-Key")
     if not key or len(key) > 200:
         raise APIError("IDEMPOTENCY_REQUIRED", "必须提供固定幂等键，重试沿用原值")
     repo = Repository(st)
-    _require_account(repo, user["id"], account_id)
+    if kaggle_enabled():
+        from .gpu.kaggle import validate_drive
+        validate_drive(repo, user["id"], account_id)
+    else:
+        _require_account(repo, user["id"], account_id)
     previous = next((j for j in repo.list("jobs", user["id"]) if j.get("idempotency_key") == key), None)
     raw = {
         "kind": "system-cuda-smoke",
@@ -148,7 +155,7 @@ def cuda_smoke(body: dict, request: Request, user=Depends(current_user), st=Depe
                     "requested_spec": eligible[0],
                     "max_runtime_minutes": raw["max_runtime_minutes"],
                     "estimated_units": (0.0 if kaggle_enabled() else raw["max_runtime_minutes"] * cfg.unit_rate),
-                    "unit_rate": cfg.unit_rate,
+                    "unit_rate": 0.0 if kaggle_enabled() else cfg.unit_rate,
                 },
                 user["id"],
             )

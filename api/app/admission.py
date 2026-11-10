@@ -197,9 +197,8 @@ def admit_job(st, user, body, key, *, validate_only=False):
         drive_id = os.getenv('KAGGLE_DRIVE_ACCOUNT_ID', '').strip()
         if not drive_id:
             raise APIError('DRIVE_ACCOUNT_REQUIRED', '请配置 KAGGLE_DRIVE_ACCOUNT_ID（素材和结果存储账号）')
-        _resource(repo, 'accounts', drive_id, user, 'ACCOUNT_NOT_FOUND', 'Drive 账号不存在')
-        if not _google_status(repo, user['id'], drive_id).get('drive', {}).get('connected'):
-            raise APIError('GOOGLE_NOT_CONNECTED', '请先完成 Drive 授权')
+        from .gpu.kaggle import validate_drive
+        validate_drive(repo, user['id'], drive_id)
         policy['account_id'] = drive_id
     baseline = None
     if policy["provider"] == "colab":

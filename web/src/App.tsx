@@ -96,7 +96,7 @@ function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
   return (
     <main className="login">
       <form className="loginCard" onSubmit={submit}>
-        <div className="brand"><span className="brandMark"><Triangle size={16} strokeWidth={1.6} aria-hidden /></span><h1>Colab GPU Studio</h1></div>
+        <div className="brand"><span className="brandMark"><Triangle size={16} strokeWidth={1.6} aria-hidden /></span><h1>Kaggle GPU Studio</h1></div>
         <p className="muted">输入访问密码进入工作台</p>
         <label>
           访问密码
@@ -766,7 +766,7 @@ export default function App() {
         <div className="brand">
           <span className="brandMark"><Triangle size={16} strokeWidth={1.6} aria-hidden /></span>
           <span className="brandText">
-            <strong>Colab GPU Studio</strong>
+            <strong>Kaggle GPU Studio</strong>
             <small>{settings?.offline_mode ? '离线演示' : '个人创作工作台'}</small>
           </span>
         </div>
@@ -997,7 +997,7 @@ export default function App() {
             onClick={(e) => e.stopPropagation()}
           >
             <h2>停止全部任务？</h2>
-            <p className="muted">会取消所有正在跑的任务，并关闭对应的 Colab GPU 机器。已经花掉的 CU 不会退回。</p>
+            <p className="muted">会请求取消所有任务。Kaggle 任务需要等待远端运行结束，也可在 Kaggle Notebook 页面手动停止。已使用的配额不会退回。</p>
             <div className="actions">
               <button className="button secondary" type="button" onClick={() => setConfirm(null)}>取消</button>
               <button className="button danger" type="button" onClick={() => void stopCompute()}>确认停止</button>

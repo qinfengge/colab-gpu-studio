@@ -19,16 +19,23 @@ def mount_models(comfy, manifest, slugs, input_root=Path('/kaggle/input')):
         if relative.is_absolute() or '..' in relative.parts or '\\' in item['target']:
             raise worker.WorkerError('invalid model target')
         candidates = []
-        for slug in slugs:
-            base = (input_root / slug).resolve()
-            path = (base / relative).resolve()
-            if base not in path.parents:
-                raise worker.WorkerError('model path escaped dataset')
-            if path.is_file():
-                candidates.append(path)
-            flat = base / item['sha256']
-            if flat.is_file():
-                candidates.append(flat.resolve())
+        for ref in slugs:
+            parts = ref.split('/')
+            if any(not part or part in {'.', '..'} or '\\' in part for part in parts) or len(parts) > 2:
+                raise worker.WorkerError('invalid Dataset reference')
+            layouts = [input_root / parts[-1]]
+            if len(parts) == 2:
+                layouts.extend([input_root / 'datasets' / ref, input_root / ref])
+            bases = {path.resolve() for path in layouts if path.is_dir()}
+            for base in bases:
+                if input_root.resolve() not in base.parents:
+                    raise worker.WorkerError('Dataset mount escaped input directory')
+                for candidate in (base / relative, base / item['sha256']):
+                    path = candidate.resolve()
+                    if base not in path.parents:
+                        raise worker.WorkerError('model path escaped dataset')
+                    if path.is_file() and path not in candidates:
+                        candidates.append(path)
         if len(candidates) != 1:
             raise worker.WorkerError(f"model must exist in exactly one attached Dataset: {relative}")
         source = candidates[0]
@@ -49,7 +56,7 @@ def main(payload):
     root = Path(tempfile.mkdtemp(prefix='studio-job-'))
     # All dependencies, inputs, logs and credentials stay outside /kaggle/working.
     # Only the bounded result envelope is retained as notebook output.
-    worker._restore_weights = lambda comfy, manifest, *a, **kw: mount_models(comfy, manifest, payload['dataset_slugs'])
+    worker._restore_weights = lambda comfy, manifest, *a, **kw: mount_models(comfy, manifest, payload['dataset_refs'])
     worker._warm_take = lambda *a, **kw: False
     worker._warm_put = lambda *a, **kw: None
     diagnostic = worker.run_cuda_smoke(root)

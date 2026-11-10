@@ -268,6 +268,8 @@ def _eligible_spec(specs, requested_key):
 
 
 def _budget_check(st, owner: str, cfg: GpuConfig, units: float) -> None:
+    if kaggle_enabled() and units == 0:
+        return  # Kaggle quota is enforced by the platform, not Colab CU accounting.
     if not math.isfinite(units) or units <= 0:
         raise APIError("RATE_UNKNOWN", "真实GPU费率或预算无效")
     if units > cfg.max_job_units:

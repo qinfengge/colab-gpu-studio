@@ -13,7 +13,7 @@ from pathlib import Path
 from .compute import ComputeError
 
 REF = re.compile(r"^[a-zA-Z0-9_-]+/[a-zA-Z0-9_-]+$")
-TERMINAL = {"complete", "error", "cancelled", "canceled"}
+TERMINAL = {"complete", "error", "cancelled", "canceled", "cancel_acknowledged"}
 
 
 def enabled():
@@ -138,7 +138,7 @@ class KaggleExecutor(KaggleProvider):
             raise ComputeError("请先将自定义 LoRA 放入私有 Kaggle Dataset")
         payload = {"execution_id": execution_id, "owner_id": job['owner_id'],
                    "snapshot": snapshot, "max_runtime_minutes": job['max_runtime_minutes'],
-                   "dataset_slugs": [d.split('/')[1] for d in datasets]}
+                   "dataset_refs": datasets}
         signature = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
         marker = folder / "submitted"
         if marker.exists():
@@ -202,6 +202,8 @@ def validate_drive(repo, owner, account_id):
     from ..common import APIError
     from .google import GoogleService
 
+    if os.getenv('GPU_STORAGE', 'local') != 'drive':
+        raise APIError('DRIVE_STORAGE_REQUIRED', 'Kaggle 模式需要 GPU_STORAGE=drive', 422)
     if not account_id or not repo.get('accounts', account_id, owner):
         raise APIError('DRIVE_ACCOUNT_REQUIRED', '请配置属于当前用户的 KAGGLE_DRIVE_ACCOUNT_ID', 422)
     if not GoogleService(repo, owner, account_id=account_id).status().get('drive', {}).get('connected'):

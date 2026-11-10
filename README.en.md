@@ -1,3 +1,5 @@
+> This fork adds Kaggle batch GPU execution, private Kaggle Dataset model mounts, and Google Drive input/output storage. See [Kaggle setup](docs/KAGGLE_SETUP.md) and the [current README](README.md). The upstream Colab instructions below describe the optional legacy provider. Real Kaggle/Drive execution has not yet been verified with user credentials.
+
 **English** | [简体中文](README.md)
 
 > Current version: 0.2.10. Fixes new-account authorization failing after OAuth application setup. Also includes Colab CLI compute accounts, independent Drive account binding, and CU reconciliation. See the [0.2.10 release notes](docs/RELEASE_NOTES_0.2.10.md) and [offline implementation notes](docs/OFFLINE_IMPLEMENTATION.md).

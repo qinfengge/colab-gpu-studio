@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
+import { fileURLToPath } from 'node:url';
 
 const bundled = await build({
   stdin: {
@@ -13,7 +14,7 @@ const bundled = await build({
       export { formatDuration, timingRows } from './src/lib/job-history.ts';
       export { taskStatusNote } from './src/lib/job-detail-copy.ts';
     `,
-    resolveDir: new URL('..', import.meta.url).pathname,
+    resolveDir: fileURLToPath(new URL('..', import.meta.url)),
     sourcefile: 'issues-15-21-entry.ts',
     loader: 'ts',
   },

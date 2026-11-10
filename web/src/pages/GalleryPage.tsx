@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { Image as ImageIcon, Film, Search, Star, Check, Eye, RotateCcw, Trash2, Play } from 'lucide-react';
-import { assetUrl, type GalleryAsset } from '../lib/gpu-api';
+import { apiFetch, apiMessage, assetUrl, type GalleryAsset } from '../lib/gpu-api';
 import styles from '../gpu.module.css';
 
 type Filter = 'all' | 'image' | 'video' | 'favorite';
@@ -27,6 +27,18 @@ export function GalleryPanel({
   const [limit, setLimit] = useState(24);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [syncing, setSyncing] = useState('');
+  const [synced, setSynced] = useState<string[]>([]);
+  const [syncError, setSyncError] = useState('');
+  async function retrySync(id: string) {
+    setSyncing(id); setSyncError('');
+    try {
+      await apiFetch(`/api/assets/${encodeURIComponent(id)}/sync-drive`, {method: 'POST'});
+      setSynced((current) => [...current, id]);
+    } catch (error) { setSyncError(apiMessage(error)); }
+    finally { setSyncing(''); }
+  }
+
 
   const filtered = useMemo(() => gallery.filter((asset) => {
     const isVideo = asset.mime.startsWith('video/');
@@ -45,6 +57,7 @@ export function GalleryPanel({
 
   return (
     <div className={styles.stack}>
+      {syncError && <p role="alert" className="status error">{syncError}</p>}
       <div className={styles.pageTitle}>
         <h2><ImageIcon size={20} strokeWidth={1.6} aria-hidden />作品<span className="pill">{gallery.length} 件作品</span></h2>
       </div>
@@ -97,6 +110,11 @@ export function GalleryPanel({
                     <Star size={17} strokeWidth={1.6} fill={asset.favorite ? 'currentColor' : 'none'} aria-hidden />
                   </button>
                 </div>
+                {asset.drive_sync_status === 'failed' && !synced.includes(asset.id) && (
+                  <button className="button small" disabled={Boolean(syncing)} onClick={() => void retrySync(asset.id)}>
+                    {syncing === asset.id ? '正在同步…' : 'Drive 未同步 · 重试'}
+                  </button>
+                )}
               </article>
             );
           })}

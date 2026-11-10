@@ -640,6 +640,8 @@ class Scheduler:
         return daily, monthly
 
     def _reserve_budget(self, job: dict, provider: Any) -> tuple[bool, str | None, dict]:
+        if self._provider_name(job) == "kaggle":
+            return True, None, {"budget_reserved": 0.0}
         # The requested provider remains authoritative even when a test double
         # is injected for a colab job.
         is_mock = self._provider_name(job) == "mock"

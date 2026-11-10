@@ -648,11 +648,26 @@ async def upload_asset(
 ):
     own(st, "projects", project_id, user)
     content = await file.read(settings.max_upload_bytes + 1)
-    return ok(
-        public_asset(save_asset(st, user["id"], project_id, content, file.filename or "upload.bin")),
-        request,
-        201,
-    )
+    asset = save_asset(st, user["id"], project_id, content, file.filename or "upload.bin")
+    from .gpu.kaggle import enabled as kaggle_enabled
+    if kaggle_enabled() and os.getenv('GPU_STORAGE', 'local') == 'drive':
+        from starlette.concurrency import run_in_threadpool
+
+        from .kaggle_storage import sync_input_asset
+        try:
+            asset = await run_in_threadpool(sync_input_asset, st, user['id'], asset)
+        except APIError:
+            asset = st.update('assets', asset['id'], {'drive_sync_status': 'failed'}, user['id'])
+    return ok(public_asset(asset), request, 201)
+
+
+@app.post('/api/assets/{asset_id}/sync-drive')
+def sync_asset_drive(asset_id: str, request: Request, user=Depends(current_user), st=Depends(get_store)):
+    from .kaggle_storage import sync_input_asset
+    asset = own(st, 'assets', asset_id, user)
+    if asset.get('source_job_id'):
+        raise APIError('INPUT_REQUIRED', '此接口只同步原始素材', 422)
+    return ok(public_asset(sync_input_asset(st, user['id'], asset)), request)
 
 
 @app.get("/api/assets/{asset_id}/download")
